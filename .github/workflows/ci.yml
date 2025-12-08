@@ -50,22 +50,28 @@ jobs:
       - name: Configure (CMake, non-Windows)
         if: ${{ matrix.os != 'windows-latest' }}
         run: |
+          cd mozuku-lsp
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Configure (CMake, Windows)
         if: ${{ matrix.os == 'windows-latest' }}
         shell: msys2 {0}
         run: |
+          cd mozuku-lsp
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build LSP (CMake, non-Windows)
         if: ${{ matrix.os != 'windows-latest' }}
-        run: cmake --build build --config Release
+        run: |
+          cd mozuku-lsp
+          cmake --build build --config Release
 
       - name: Build LSP (CMake, Windows)
         if: ${{ matrix.os == 'windows-latest' }}
         shell: msys2 {0}
-        run: cmake --build build --config Release
+        run: |
+          cd mozuku-lsp
+          cmake --build build --config Release
 
       - name: Install npm deps (VS Code extension)
         run: npm ci
@@ -81,7 +87,7 @@ jobs:
         with:
           name: mozuku-${{ matrix.os }}
           path: |
-            build/mozuku-lsp*
+            mozuku-lsp/build/mozuku-lsp*
             vscode-mozuku/dist/**
             vscode-mozuku/bin/**
             vscode-mozuku/metadata.json
