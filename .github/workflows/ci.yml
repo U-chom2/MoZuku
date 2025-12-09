@@ -93,6 +93,12 @@ jobs:
           export LIBTOOLIZE="${LIBTOOL_DIR}/glibtoolize"
           export LIBTOOL="${LIBTOOL_DIR}/glibtool"
           export ACLOCAL_PATH="$(brew --prefix gettext)/share/aclocal:${ACLOCAL_PATH}"
+          mkdir -p m4
+          ICONV_M4="$(brew --prefix gettext)/share/aclocal/iconv.m4"
+          if [ -f "$ICONV_M4" ]; then
+            cp "$ICONV_M4" m4/
+          fi
+          aclocal -I m4
           autoreconf -i
           ./configure --with-charset=utf8 --with-mecab-config=/usr/local/bin/mecab-config --with-crfpp-config=/usr/local/bin/crf-config --prefix=/usr/local CXXFLAGS="-std=c++11"
           make -j2
@@ -227,7 +233,7 @@ jobs:
         run: |
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
-          patch -p1 < ../crfpp_fix.patch
+          patch -p1 < ../patches/crfpp_fix.patch
           sed -i 's/winmain.h //g' Makefile.am Makefile.in
           sed -i '/winmain.h/d' crf_learn.cpp crf_test.cpp
           mkdir -p m4
