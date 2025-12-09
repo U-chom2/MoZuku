@@ -45,7 +45,8 @@ jobs:
         run: |
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
-          patch -p1 < ../crfpp_fix.patch
+          PATCH_CMD="$(command -v gpatch || command -v patch)"
+          $PATCH_CMD -p1 < ../crfpp_fix.patch
           sed -i '' 's/winmain.h //g' Makefile.am Makefile.in
           sed -i '' '/winmain.h/d' crf_learn.cpp crf_test.cpp
           ./configure --prefix=/usr/local CXXFLAGS="-std=c++11"
@@ -100,6 +101,7 @@ jobs:
             automake
             libtool
             make
+            patch
             gettext
 
       - name: Install tree-sitter CLI (non-Windows)
