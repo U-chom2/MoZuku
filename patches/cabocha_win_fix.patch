@@ -1,0 +1,36 @@
+diff --git a/src/common.h b/src/common.h
+--- a/src/common.h
++++ b/src/common.h
+@@
+-#include <string>
+-using std::string;
+-using std::vector;
+-using std::ostream;
+-using std::istream;
+-using std::stringstream;
+-using std::hash_map;
++#include <string>
++#include <unordered_map>
++#ifdef _WIN32
++#include <windows.h>
++inline std::wstring Utf8ToWideWin(const char *input) {
++  if (!input)
++    return std::wstring();
++  int len = MultiByteToWideChar(CP_UTF8, 0, input, -1, NULL, 0);
++  if (len <= 0)
++    return std::wstring();
++  std::wstring w(len, L'\0');
++  MultiByteToWideChar(CP_UTF8, 0, input, -1, &w[0], len);
++  if (!w.empty() && w.back() == L'\0')
++    w.pop_back();
++  return w;
++}
++#undef WPATH
++#define WPATH(path) (CaboCha::Utf8ToWideWin(path).c_str())
++#endif
++using std::string;
++using std::vector;
++using std::ostream;
++using std::istream;
++using std::stringstream;
++using std::unordered_map;

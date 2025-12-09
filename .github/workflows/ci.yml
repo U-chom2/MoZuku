@@ -46,7 +46,7 @@ jobs:
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
           PATCH_CMD="$(command -v gpatch || command -v patch)"
-          $PATCH_CMD -p1 < ../crfpp_fix.patch
+          $PATCH_CMD -p1 < ../patches/crfpp_fix.patch
           sed -i '' 's/winmain.h //g' Makefile.am Makefile.in
           sed -i '' '/winmain.h/d' crf_learn.cpp crf_test.cpp
           ./configure --prefix=/usr/local CXXFLAGS="-std=c++11"
@@ -85,6 +85,14 @@ jobs:
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
+          export LIBTOOL_DIR="$(brew --prefix libtool)/bin"
+          mkdir -p /tmp/libtool-bin
+          ln -sf "${LIBTOOL_DIR}/glibtoolize" /tmp/libtool-bin/libtoolize
+          ln -sf "${LIBTOOL_DIR}/glibtool" /tmp/libtool-bin/libtool
+          export PATH="/tmp/libtool-bin:${LIBTOOL_DIR}:$PATH"
+          export LIBTOOLIZE="${LIBTOOL_DIR}/glibtoolize"
+          export LIBTOOL="${LIBTOOL_DIR}/glibtool"
+          export ACLOCAL_PATH="$(brew --prefix gettext)/share/aclocal:${ACLOCAL_PATH}"
           autoreconf -i
           ./configure --with-charset=utf8 --with-mecab-config=/usr/local/bin/mecab-config --with-crfpp-config=/usr/local/bin/crf-config --prefix=/usr/local CXXFLAGS="-std=c++11"
           make -j2
@@ -173,7 +181,7 @@ jobs:
         run: |
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
-          patch -p1 < ../crfpp_fix.patch
+          patch -p1 < ../patches/crfpp_fix.patch
           sed -i 's/winmain.h //g' Makefile.am Makefile.in
           sed -i '/winmain.h/d' crf_learn.cpp crf_test.cpp
           ./configure --prefix=/usr CXXFLAGS="-std=c++11"
@@ -234,9 +242,7 @@ jobs:
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
-          sed -i '1i #include <unordered_map>' src/common.h
-          sed -i 's/std::hash_map/std::unordered_map/g' src/common.h
-          sed -i 's|#include <string>|#include <string>\n#ifdef _WIN32\n#include <windows.h>\nnamespace CaboCha { inline std::wstring Utf8ToWide(const std::string &s){ int len = MultiByteToWideChar(CP_UTF8,0,s.c_str(),-1,NULL,0); std::wstring w(len,0); MultiByteToWideChar(CP_UTF8,0,s.c_str(),-1,&w[0],len); if(!w.empty() && w.back()==L'\\0') w.pop_back(); return w; } }\n#endif|' src/common.h
+          patch -p1 < ../patches/cabocha_win_fix.patch
           autoreconf -i
           ./configure --with-charset=UTF8 --with-mecab-config=/mingw64/bin/mecab-config --with-crfpp-config=/mingw64/bin/crf-config --prefix=/mingw64 CXXFLAGS="-std=c++11"
           make -j2
