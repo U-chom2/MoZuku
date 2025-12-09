@@ -89,14 +89,16 @@ jobs:
         if: ${{ matrix.os == 'windows-latest' }}
         shell: msys2 {0}
         run: |
-          mkdir -p /mingw64/libexec/mecab
-          if [ -f /mingw64/bin/mecab-dict-index ]; then
-            cp /mingw64/bin/mecab-dict-index /mingw64/libexec/mecab/mecab-dict-index
-          fi
           cd mecab/mecab-ipadic
           ./configure --prefix=/mingw64 --with-charset=utf8 --with-mecab-config=/mingw64/bin/mecab-config
           make -j2
           make install
+          if [ ! -f /mingw64/libexec/mecab/mecab-dict-index ]; then
+            mkdir -p /mingw64/libexec/mecab
+            if [ -f /mingw64/bin/mecab-dict-index ]; then
+              cp /mingw64/bin/mecab-dict-index /mingw64/libexec/mecab/mecab-dict-index
+            fi
+          fi
 
       - name: Build CRF++ (Ubuntu)
         if: ${{ matrix.os == 'ubuntu-latest' }}

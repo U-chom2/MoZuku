@@ -5,6 +5,11 @@ set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(TREESITTER REQUIRED tree-sitter)
 
+if(NOT BUILD_WITH_CABOCHA)
+    set(CABOCHA_FOUND FALSE)
+    message(STATUS "BUILD_WITH_CABOCHA=OFF のためCaboCha検出をスキップします")
+endif()
+
 find_program(MECAB_CONFIG mecab-config)
 
 if(MECAB_CONFIG)
@@ -66,75 +71,78 @@ else()
     endif()
 endif()
 
-find_program(CABOCHA_CONFIG cabocha-config)
+if(BUILD_WITH_CABOCHA)
+    find_program(CABOCHA_CONFIG cabocha-config)
 
-if(CABOCHA_CONFIG)
-    execute_process(
-        COMMAND ${CABOCHA_CONFIG} --libs
-        OUTPUT_VARIABLE CABOCHA_LIBRARIES
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    execute_process(
-        COMMAND ${CABOCHA_CONFIG} --cflags
-        OUTPUT_VARIABLE CABOCHA_CFLAGS
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+    if(CABOCHA_CONFIG)
+        execute_process(
+            COMMAND ${CABOCHA_CONFIG} --libs
+            OUTPUT_VARIABLE CABOCHA_LIBRARIES
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        execute_process(
+            COMMAND ${CABOCHA_CONFIG} --cflags
+            OUTPUT_VARIABLE CABOCHA_CFLAGS
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
 
-    string(REGEX MATCHALL "-I[^ ]*" CABOCHA_INCLUDE_FLAGS "${CABOCHA_CFLAGS}")
-    set(CABOCHA_INCLUDE_DIRS "")
-    foreach(flag ${CABOCHA_INCLUDE_FLAGS})
-        string(SUBSTRING ${flag} 2 -1 include_dir)
-        list(APPEND CABOCHA_INCLUDE_DIRS ${include_dir})
-    endforeach()
+        string(REGEX MATCHALL "-I[^ ]*" CABOCHA_INCLUDE_FLAGS "${CABOCHA_CFLAGS}")
+        set(CABOCHA_INCLUDE_DIRS "")
+        foreach(flag ${CABOCHA_INCLUDE_FLAGS})
+            string(SUBSTRING ${flag} 2 -1 include_dir)
+            list(APPEND CABOCHA_INCLUDE_DIRS ${include_dir})
+        endforeach()
 
-    string(REGEX MATCHALL "-l[^ ]*" CABOCHA_LIB_FLAGS "${CABOCHA_LIBRARIES}")
-    string(REGEX MATCHALL "-L[^ ]*" CABOCHA_LIB_DIRS "${CABOCHA_LIBRARIES}")
+        string(REGEX MATCHALL "-l[^ ]*" CABOCHA_LIB_FLAGS "${CABOCHA_LIBRARIES}")
+        string(REGEX MATCHALL "-L[^ ]*" CABOCHA_LIB_DIRS "${CABOCHA_LIBRARIES}")
 
-    set(CABOCHA_CLEANED_LIBS "")
-    foreach(lib ${CABOCHA_LIB_FLAGS})
-        string(SUBSTRING ${lib} 2 -1 clean_lib)
-        list(APPEND CABOCHA_CLEANED_LIBS ${clean_lib})
-    endforeach()
+        set(CABOCHA_CLEANED_LIBS "")
+        foreach(lib ${CABOCHA_LIB_FLAGS})
+            string(SUBSTRING ${lib} 2 -1 clean_lib)
+            list(APPEND CABOCHA_CLEANED_LIBS ${clean_lib})
+        endforeach()
 
-    set(CABOCHA_CLEANED_DIRS "")
-    foreach(dir ${CABOCHA_LIB_DIRS})
-        string(SUBSTRING ${dir} 2 -1 clean_dir)
-        list(APPEND CABOCHA_CLEANED_DIRS ${clean_dir})
-    endforeach()
+        set(CABOCHA_CLEANED_DIRS "")
+        foreach(dir ${CABOCHA_LIB_DIRS})
+            string(SUBSTRING ${dir} 2 -1 clean_dir)
+            list(APPEND CABOCHA_CLEANED_DIRS ${clean_dir})
+        endforeach()
 
     set(CABOCHA_LIBRARY_DIRS ${CABOCHA_CLEANED_DIRS})
     set(CABOCHA_LINK_LIBRARIES ${CABOCHA_CLEANED_LIBS})
+    set(CABOCHA_LIBRARIES ${CABOCHA_CLEANED_LIBS})
 
-    set(CABOCHA_FOUND TRUE)
-    message(STATUS "cabocha-configによりCaboChaを発見:")
-    message(STATUS "  インクルードディレクトリ: ${CABOCHA_INCLUDE_DIRS}")
-    message(STATUS "  ライブラリ: ${CABOCHA_LIBRARIES}")
-else()
-    message(STATUS "cabocha-configが見つかりません - 標準システムパスを試行中")
-    find_path(CABOCHA_INCLUDE_DIRS cabocha.h
-        PATHS
-            /opt/homebrew/include
-            /opt/homebrew/Cellar/cabocha/*/include
-            /usr/local/include
-            /usr/include
-            "C:/Program Files/CaboCha/sdk"
-            "C:/cabocha/sdk"
-        NO_DEFAULT_PATH)
-    find_library(CABOCHA_LIBRARIES cabocha
-        NAMES cabocha libcabocha
-        PATHS
-            /opt/homebrew/lib
-            /opt/homebrew/Cellar/cabocha/*/lib
-            /usr/local/lib
-            /usr/lib
-            "C:/Program Files/CaboCha/sdk"
-            "C:/cabocha/sdk"
-        NO_DEFAULT_PATH)
-    if(CABOCHA_INCLUDE_DIRS AND CABOCHA_LIBRARIES)
         set(CABOCHA_FOUND TRUE)
-        message(STATUS "システムパスでCaboChaを発見:")
-        message(STATUS "  ヘッダー: ${CABOCHA_INCLUDE_DIRS}")
+        message(STATUS "cabocha-configによりCaboChaを発見:")
+        message(STATUS "  インクルードディレクトリ: ${CABOCHA_INCLUDE_DIRS}")
         message(STATUS "  ライブラリ: ${CABOCHA_LIBRARIES}")
+    else()
+        message(STATUS "cabocha-configが見つかりません - 標準システムパスを試行中")
+        find_path(CABOCHA_INCLUDE_DIRS cabocha.h
+            PATHS
+                /opt/homebrew/include
+                /opt/homebrew/Cellar/cabocha/*/include
+                /usr/local/include
+                /usr/include
+                "C:/Program Files/CaboCha/sdk"
+                "C:/cabocha/sdk"
+            NO_DEFAULT_PATH)
+        find_library(CABOCHA_LIBRARIES cabocha
+            NAMES cabocha libcabocha
+            PATHS
+                /opt/homebrew/lib
+                /opt/homebrew/Cellar/cabocha/*/lib
+                /usr/local/lib
+                /usr/lib
+                "C:/Program Files/CaboCha/sdk"
+                "C:/cabocha/sdk"
+            NO_DEFAULT_PATH)
+        if(CABOCHA_INCLUDE_DIRS AND CABOCHA_LIBRARIES)
+            set(CABOCHA_FOUND TRUE)
+            message(STATUS "システムパスでCaboChaを発見:")
+            message(STATUS "  ヘッダー: ${CABOCHA_INCLUDE_DIRS}")
+            message(STATUS "  ライブラリ: ${CABOCHA_LIBRARIES}")
+        endif()
     endif()
 endif()
 
