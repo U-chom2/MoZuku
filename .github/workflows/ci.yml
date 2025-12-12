@@ -358,7 +358,7 @@ jobs:
           $content = $content -replace "(\r?\n)\s*-DMODEL_VERSION", " -DMODEL_VERSION"
 
           # Force UTF-8 RC path for this build to avoid escaping issues
-          $content = $content -replace "CABOCHA_DEFAULT_RC=\"\"c:\\\\Program Files\\\\cabocha\\\\etc\\\\cabocharc\"\"", "CABOCHA_DEFAULT_RC=\"\"c:\\\\cabocha\\\\etc\\\\cabocharc\"\""
+          $content = $content -replace 'CABOCHA_DEFAULT_RC="\\"c:\\\\Program Files\\\\cabocha\\\\etc\\\\cabocharc\\""', 'CABOCHA_DEFAULT_RC="\\"c:\\\\cabocha\\\\etc\\\\cabocharc\\""'
 
           # Force UTF-8 as the default charset in this CI build.
           $content = $content -replace '(?m)^DEFS\s*=\s*(.*)$', 'DEFS = $1 -DCABOCHA_DEFAULT_CHARSET="\"UTF-8\""'
