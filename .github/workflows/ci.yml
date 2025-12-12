@@ -134,6 +134,12 @@ jobs:
           $binDir = "$(npm prefix -g)\bin"
           echo "PATH=$binDir;$env:PATH" >> $env:GITHUB_ENV
 
+      - name: Setup MSVC dev cmd (Windows x86)
+        if: ${{ matrix.os == 'windows' }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
       - name: Install vcpkg (Windows)
         if: ${{ matrix.os == 'windows' }}
         shell: pwsh
@@ -254,12 +260,6 @@ jobs:
           make -j2
           sudo make install
           sudo ldconfig
-
-      - name: Setup MSVC dev cmd (Windows x86)
-        if: ${{ matrix.os == 'windows' }}
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x86
 
       - name: Checkout CRF++ (Windows, MSVC)
         if: ${{ matrix.os == 'windows' }}
