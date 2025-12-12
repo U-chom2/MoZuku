@@ -410,8 +410,20 @@ jobs:
         if: ${{ matrix.os == 'windows' }}
         shell: pwsh
         run: |
+          $mecabSrc = Resolve-Path "..\mecab\mecab\src"
+          $cabochaSrc = Resolve-Path "..\cabocha\src"
+          $crfppSrc = Resolve-Path "..\crfpp"
+
           cd mozuku-lsp
-          cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON "-DCMAKE_TOOLCHAIN_FILE=$env:CMAKE_TOOLCHAIN_FILE" "-DVCPKG_TARGET_TRIPLET=x86-windows"
+          cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:CMAKE_TOOLCHAIN_FILE" `
+            "-DVCPKG_TARGET_TRIPLET=x86-windows" `
+            "-DMECAB_INCLUDE_HINT=$mecabSrc" `
+            "-DMECAB_LIBRARY_HINT=$mecabSrc" `
+            "-DCABOCHA_INCLUDE_HINT=$cabochaSrc" `
+            "-DCABOCHA_LIBRARY_HINT=$cabochaSrc" `
+            "-DCRFPP_INCLUDE_HINT=$crfppSrc" `
+            "-DCRFPP_LIBRARY_HINT=$crfppSrc"
 
       - name: Build LSP (CMake, non-Windows)
         if: ${{ matrix.os != 'windows' }}

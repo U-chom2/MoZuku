@@ -73,23 +73,25 @@ else()
     message(STATUS "mecab-configが見つかりません - 標準システムパスを試行中")
     find_path(MECAB_INCLUDE_DIRS mecab.h
         PATHS
+            ${MECAB_INCLUDE_HINT}
             /opt/homebrew/include
             /opt/homebrew/Cellar/mecab/*/include
             /usr/local/include
             /usr/include
             "C:/Program Files/MeCab/sdk"
             "C:/mecab/sdk"
-        NO_DEFAULT_PATH)
+    )
     find_library(MECAB_LIBRARIES mecab
         NAMES mecab libmecab
         PATHS
+            ${MECAB_LIBRARY_HINT}
             /opt/homebrew/lib
             /opt/homebrew/Cellar/mecab/*/lib
             /usr/local/lib
             /usr/lib
             "C:/Program Files/MeCab/sdk"
             "C:/mecab/sdk"
-        NO_DEFAULT_PATH)
+    )
     if(MECAB_INCLUDE_DIRS AND MECAB_LIBRARIES)
         set(MECAB_FOUND TRUE)
         message(STATUS "システムパスでMeCabを発見:")
@@ -149,23 +151,25 @@ if(BUILD_WITH_CABOCHA)
         message(STATUS "cabocha-configが見つかりません - 標準システムパスを試行中")
         find_path(CABOCHA_INCLUDE_DIRS cabocha.h
             PATHS
+                ${CABOCHA_INCLUDE_HINT}
                 /opt/homebrew/include
                 /opt/homebrew/Cellar/cabocha/*/include
                 /usr/local/include
                 /usr/include
                 "C:/Program Files/CaboCha/sdk"
                 "C:/cabocha/sdk"
-            NO_DEFAULT_PATH)
+        )
         find_library(CABOCHA_LIBRARIES cabocha
             NAMES cabocha libcabocha
             PATHS
+                ${CABOCHA_LIBRARY_HINT}
                 /opt/homebrew/lib
                 /opt/homebrew/Cellar/cabocha/*/lib
                 /usr/local/lib
                 /usr/lib
                 "C:/Program Files/CaboCha/sdk"
                 "C:/cabocha/sdk"
-            NO_DEFAULT_PATH)
+        )
         if(CABOCHA_INCLUDE_DIRS AND CABOCHA_LIBRARIES)
             set(CABOCHA_LINK_LIBRARIES ${CABOCHA_LIBRARIES})
             set(CABOCHA_FOUND TRUE)
@@ -184,6 +188,7 @@ endif()
 
 find_path(CRFPP_INCLUDE_DIRS crfpp.h
     PATHS
+        ${CRFPP_INCLUDE_HINT}
         /opt/homebrew/include
         /opt/homebrew/Cellar/crf++/*/include
         /usr/local/include
@@ -191,18 +196,19 @@ find_path(CRFPP_INCLUDE_DIRS crfpp.h
         "C:/Program Files/CRF++/sdk"
         "C:/crfpp/sdk"
     PATH_SUFFIXES crf++
-    NO_DEFAULT_PATH)
+)
 
 find_library(CRFPP_LIBRARIES crfpp
     NAMES crfpp libcrfpp
     PATHS
+        ${CRFPP_LIBRARY_HINT}
         /opt/homebrew/lib
         /opt/homebrew/Cellar/crf++/*/lib
         /usr/local/lib
         /usr/lib
         "C:/Program Files/CRF++/sdk"
         "C:/crfpp/sdk"
-    NO_DEFAULT_PATH)
+)
 
 if(CRFPP_INCLUDE_DIRS AND CRFPP_LIBRARIES)
     set(CRFPP_FOUND TRUE)
