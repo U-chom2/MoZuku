@@ -195,6 +195,13 @@ jobs:
         env:
           CL: /utf-8
         run: |
+          # MSVC向けに WPATH_FORCE を定義する (公式 Makefile.msvc では未定義のまま)
+          $common = Get-Content -LiteralPath "src/common.h" -Raw
+          $pattern = "#ifdef _WIN32\s*#ifdef __GNUC__\s*#define WPATH_FORCE\(path\) \(MeCab::Utf8ToWide\(path\).c_str\(\)\)\s*#define WPATH\(path\) \(path\)\s*#else\s*#define WPATH\(path\) WPATH_FORCE\(path\)\s*#endif"
+          $replacement = "#ifdef _WIN32`n#ifdef __GNUC__`n#define WPATH_FORCE(path) (MeCab::Utf8ToWide(path).c_str())`n#define WPATH(path) (path)`n#else`n#define WPATH_FORCE(path) (MeCab::Utf8ToWide(path).c_str())`n#define WPATH(path) WPATH_FORCE(path)`n#endif`n"
+          $common = [regex]::Replace($common, $pattern, $replacement, 'Singleline')
+          Set-Content -LiteralPath "src/common.h" -Value $common -NoNewline -Encoding ascii
+
           Push-Location src
           nmake -f Makefile.msvc clean
           nmake -f Makefile.msvc
