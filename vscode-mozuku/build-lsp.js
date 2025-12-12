@@ -12,7 +12,8 @@ const isDarwin = process.platform === 'darwin';
 const targets = [
   { platform: 'darwin', arch: 'arm64', enabled: isDarwin && process.arch === 'arm64' },
   { platform: 'darwin', arch: 'x64', enabled: isDarwin && process.arch === 'x64' },
-  { platform: 'linux', arch: 'x64', enabled: isLinux },
+  { platform: 'linux', arch: 'arm64', enabled: isLinux && process.arch === 'arm64' },
+  { platform: 'linux', arch: 'x64', enabled: isLinux && process.arch === 'x64' },
   { platform: 'win32', arch: 'x64', enabled: isWindows },
 ];
 
