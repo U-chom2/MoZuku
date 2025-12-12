@@ -8,13 +8,28 @@ on:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86_64
+          - runner: windows-latest
+            os: windows
+            arch: x86_64
+          - runner: macos-15-intel
+            os: macos
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: aarch64
+            configure_flags: --build=arm-unknown-linux-gnu --host=arm-unknown-linux-gnu --target=arm-unknown-linux-gnu
+          - runner: macos-latest
+            os: macos
+            arch: aarch64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,8 +41,8 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install deps (Ubuntu)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Install deps (Linux)
+        if: ${{ matrix.os == 'linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential ninja-build pkg-config \
@@ -35,13 +50,13 @@ jobs:
             git autoconf automake libtool libtool-bin patch gettext
 
       - name: Install deps (macOS)
-        if: ${{ matrix.os == 'macos-latest' }}
+        if: ${{ matrix.os == 'macos' }}
         run: |
           brew update
           brew install ninja pkg-config autoconf automake libtool gpatch gettext curl tree-sitter
 
       - name: Build CRF++ (macOS)
-        if: ${{ matrix.os == 'macos-latest' }}
+        if: ${{ matrix.os == 'macos' }}
         run: |
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
@@ -54,7 +69,7 @@ jobs:
           sudo make install
 
       - name: Build MeCab (macOS)
-        if: ${{ matrix.os == 'macos-latest' }}
+        if: ${{ matrix.os == 'macos' }}
         run: |
           git clone https://github.com/taku910/mecab.git
           cd mecab/mecab
@@ -73,7 +88,7 @@ jobs:
           sudo make install
 
       - name: Build MeCab IPADIC (macOS)
-        if: ${{ matrix.os == 'macos-latest' }}
+        if: ${{ matrix.os == 'macos' }}
         run: |
           cd mecab/mecab-ipadic
           ./configure --prefix=/usr/local --with-charset=utf8 --with-mecab-config=/usr/local/bin/mecab-config
@@ -81,7 +96,7 @@ jobs:
           sudo make install
 
       - name: Build CaboCha (macOS)
-        if: ${{ matrix.os == 'macos-latest' }}
+        if: ${{ matrix.os == 'macos' }}
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
@@ -106,7 +121,7 @@ jobs:
           sudo make install
 
       - name: Install deps (Windows - MSYS2)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -128,21 +143,21 @@ jobs:
             gettext
 
       - name: Install tree-sitter CLI (non-Windows)
-        if: ${{ matrix.os != 'windows-latest' }}
+        if: ${{ matrix.os != 'windows' }}
         run: |
           npm install -g tree-sitter-cli
           BIN_DIR="$(npm prefix -g)/bin"
           echo "PATH=${BIN_DIR}:$PATH" >> $GITHUB_ENV
 
       - name: Install tree-sitter CLI (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         run: |
           npm install -g tree-sitter-cli
           $binDir = "$(npm prefix -g)\bin"
           echo "PATH=$binDir;$env:PATH" >> $env:GITHUB_ENV
 
       - name: Build MeCab (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         shell: msys2 {0}
         run: |
           git clone https://github.com/taku910/mecab.git
@@ -163,7 +178,7 @@ jobs:
           fi
 
       - name: Build MeCab IPADIC (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         shell: msys2 {0}
         run: |
           cd mecab/mecab-ipadic
@@ -183,8 +198,10 @@ jobs:
             echo "mecab-dict-index still missing" && find /mingw64 -maxdepth 5 -type f | head
           fi
 
-      - name: Build CRF++ (Ubuntu)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Build CRF++ (Linux)
+        if: ${{ matrix.os == 'linux' }}
+        env:
+          CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
           git clone https://github.com/taku910/crfpp.git
           cd crfpp
@@ -192,25 +209,27 @@ jobs:
           patch -p1 < ../patches/crfpp_fix.patch
           sed -i 's/winmain.h //g' Makefile.am Makefile.in
           sed -i '/winmain.h/d' crf_learn.cpp crf_test.cpp
-          ./configure --prefix=/usr CXXFLAGS="-std=c++11"
+          ./configure --prefix=/usr CXXFLAGS="-std=c++11" $CONFIGURE_FLAGS
           make -j2
           sudo make install
           sudo ldconfig
 
-      - name: Build MeCab (Ubuntu)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Build MeCab (Linux)
+        if: ${{ matrix.os == 'linux' }}
+        env:
+          CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
           git clone https://github.com/taku910/mecab.git
           cd mecab/mecab
           ./autogen.sh
-          ./configure --prefix=/usr --with-charset=UTF8
+          ./configure --prefix=/usr --with-charset=UTF8 $CONFIGURE_FLAGS
           make -j2
           make check || true
           sudo make install
           sudo ldconfig
 
-      - name: Build MeCab IPADIC (Ubuntu)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Build MeCab IPADIC (Linux)
+        if: ${{ matrix.os == 'linux' }}
         run: |
           cd mecab/mecab-ipadic
           ./configure --prefix=/usr --with-charset=utf8 --with-mecab-config=/usr/bin/mecab-config
@@ -218,19 +237,21 @@ jobs:
           sudo make install
           sudo ldconfig
 
-      - name: Build CaboCha (Ubuntu)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Build CaboCha (Linux)
+        if: ${{ matrix.os == 'linux' }}
+        env:
+          CONFIGURE_FLAGS: ${{ matrix.configure_flags }}
         run: |
           git clone https://github.com/taku910/cabocha.git
           cd cabocha
           autoreconf -i
-          ./configure --with-charset=utf-8 --with-mecab-config=/usr/bin/mecab-config --with-crfpp-config=/usr/bin/crf-config --prefix=/usr CXXFLAGS="-std=c++11"
+          ./configure --with-charset=utf-8 --with-mecab-config=/usr/bin/mecab-config --with-crfpp-config=/usr/bin/crf-config --prefix=/usr CXXFLAGS="-std=c++11" $CONFIGURE_FLAGS
           make -j2
           sudo make install
           sudo ldconfig
 
       - name: Build CRF++ (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         shell: msys2 {0}
         run: |
           git clone https://github.com/taku910/crfpp.git
@@ -245,7 +266,7 @@ jobs:
           make install-libLTLIBRARIES install-includeHEADERS
 
       - name: Build CaboCha (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         shell: msys2 {0}
         run: |
           git clone https://github.com/taku910/cabocha.git
@@ -258,26 +279,26 @@ jobs:
           make install
 
       - name: Configure (CMake, non-Windows)
-        if: ${{ matrix.os != 'windows-latest' }}
+        if: ${{ matrix.os != 'windows' }}
         run: |
           cd mozuku-lsp
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON
 
       - name: Configure (CMake, Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         shell: msys2 {0}
         run: |
           cd mozuku-lsp
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_WITH_CABOCHA=ON
 
       - name: Build LSP (CMake, non-Windows)
-        if: ${{ matrix.os != 'windows-latest' }}
+        if: ${{ matrix.os != 'windows' }}
         run: |
           cd mozuku-lsp
           cmake --build build --config Release
 
       - name: Build LSP (CMake, Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ matrix.os == 'windows' }}
         shell: msys2 {0}
         run: |
           cd mozuku-lsp
@@ -295,7 +316,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: mozuku-${{ matrix.os }}
+          name: mozuku-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             mozuku-lsp/build/mozuku-lsp*
             vscode-mozuku/dist/**
