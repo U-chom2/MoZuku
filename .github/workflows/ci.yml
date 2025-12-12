@@ -401,6 +401,12 @@ jobs:
           nmake -f Makefile.msvc
           Pop-Location
 
+          # Debug: show built files
+          Write-Host "=== CaboCha build output ==="
+          Get-ChildItem -Path "src" -Filter "*.lib" | Select-Object Name
+          Get-ChildItem -Path "src" -Filter "*.dll" | Select-Object Name
+          Get-ChildItem -Path "src" -Filter "*.h" | Select-Object Name
+
       - name: Upload CaboCha MSVC artifacts
         if: ${{ matrix.os == 'windows' }}
         uses: actions/upload-artifact@v4
@@ -426,6 +432,16 @@ jobs:
           $mecabSrc = Resolve-Path "mecab\mecab\src"
           $cabochaSrc = Resolve-Path "cabocha\src"
           $crfppSrc = Resolve-Path "crfpp"
+
+          # Debug: verify files exist
+          Write-Host "=== Checking CaboCha files ==="
+          Write-Host "CABOCHA_INCLUDE_HINT: $cabochaSrc"
+          Write-Host "Looking for cabocha.h:"
+          Get-ChildItem -Path $cabochaSrc -Filter "cabocha.h" -ErrorAction SilentlyContinue
+          Write-Host "Looking for libcabocha.lib:"
+          Get-ChildItem -Path $cabochaSrc -Filter "libcabocha.lib" -ErrorAction SilentlyContinue
+          Write-Host "All .lib files in $cabochaSrc`:"
+          Get-ChildItem -Path $cabochaSrc -Filter "*.lib" -ErrorAction SilentlyContinue
 
           cd mozuku-lsp
           cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release `
