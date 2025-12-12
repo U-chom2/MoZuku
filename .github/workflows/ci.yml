@@ -202,6 +202,16 @@ jobs:
           $common = [regex]::Replace($common, $pattern, $replacement, 'Singleline')
           Set-Content -LiteralPath "src/common.h" -Value $common -NoNewline -Encoding ascii
 
+          # C++17互換修正: dictionary.cpp に <functional> を追加し、std::binary_function 依存を除去
+          $dict = Get-Content -LiteralPath "src/dictionary.cpp" -Raw
+          if ($dict -notmatch "<functional>") {
+            $dict = $dict -replace "#include <climits>", "#include <climits>`n#include <functional>"
+          }
+          $dictPattern = "template <typename T1, typename T2>\s*struct pair_1st_cmp:\s*public\s*std::binary_function<bool,\s*T1,\s*T2>\s*{\s*bool operator\(\)\(const std::pair<T1,\s*T2> &x1,\s*`r?`n\s*const std::pair<T1,\s*T2> &x2\)\s*{\s*return x1\.first < x2\.first;\s*}\s*};"
+          $dictReplacement = "template <typename T1, typename T2>`nstruct pair_1st_cmp {`n  bool operator()(const std::pair<T1, T2> &x1,`n                  const std::pair<T1, T2> &x2) const {`n    return x1.first < x2.first;`n  }`n};"
+          $dict = [regex]::Replace($dict, $dictPattern, $dictReplacement, 'Singleline')
+          Set-Content -LiteralPath "src/dictionary.cpp" -Value $dict -NoNewline -Encoding ascii
+
           Push-Location src
           nmake -f Makefile.msvc clean
           nmake -f Makefile.msvc
