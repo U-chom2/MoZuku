@@ -8,51 +8,27 @@ set(TREESITTER_CFLAGS_OTHER "")
 set(TREESITTER_LIBRARIES "")
 set(TREESITTER_LIBRARY_DIRS "")
 
-find_package(tree-sitter CONFIG QUIET)
-if(tree-sitter_FOUND)
-    # vcpkg (MSVC) など CONFIG モードの tree-sitter を優先
-    if(TARGET tree-sitter::tree-sitter)
-        set(TREESITTER_LIBRARIES tree-sitter::tree-sitter)
-    endif()
+# vcpkg の unofficial-tree-sitter を最初に試す
+find_package(unofficial-tree-sitter CONFIG QUIET)
+if(unofficial-tree-sitter_FOUND AND TARGET unofficial::tree-sitter::tree-sitter)
+    set(TREESITTER_LIBRARIES unofficial::tree-sitter::tree-sitter)
     set(TREESITTER_FOUND TRUE)
-    message(STATUS "tree-sitter を CONFIG モードで発見")
+    message(STATUS "tree-sitter を vcpkg (unofficial-tree-sitter) で発見")
 else()
-    # Windows では PkgConfig が利用できない場合がある
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(TREESITTER REQUIRED tree-sitter)
-    elseif(WIN32)
-        # Windows: vcpkg のインストール先を直接検索
-        message(STATUS "Windows: tree-sitter を直接検索中...")
-        message(STATUS "  CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
-        message(STATUS "  VCPKG_INSTALLED_DIR: ${VCPKG_INSTALLED_DIR}")
-
-        # vcpkg installed ディレクトリを含めて検索
-        find_path(TREESITTER_INCLUDE_DIRS tree_sitter/api.h
-            PATHS
-                ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include
-                ${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include
-            PATH_SUFFIXES include
-        )
-        find_library(TREESITTER_LIB
-            NAMES tree-sitter tree_sitter
-            PATHS
-                ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib
-                ${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib
-            PATH_SUFFIXES lib
-        )
-        message(STATUS "  検索結果 - INCLUDE: ${TREESITTER_INCLUDE_DIRS}")
-        message(STATUS "  検索結果 - LIB: ${TREESITTER_LIB}")
-
-        if(TREESITTER_INCLUDE_DIRS AND TREESITTER_LIB)
-            set(TREESITTER_LIBRARIES ${TREESITTER_LIB})
-            set(TREESITTER_FOUND TRUE)
-            message(STATUS "tree-sitter を直接検索で発見: ${TREESITTER_LIB}")
-        else()
-            message(FATAL_ERROR "tree-sitter が見つかりません - vcpkg install tree-sitter を実行してください")
-        endif()
+    # 次に通常の tree-sitter CONFIG を試す
+    find_package(tree-sitter CONFIG QUIET)
+    if(tree-sitter_FOUND AND TARGET tree-sitter::tree-sitter)
+        set(TREESITTER_LIBRARIES tree-sitter::tree-sitter)
+        set(TREESITTER_FOUND TRUE)
+        message(STATUS "tree-sitter を CONFIG モードで発見")
     else()
-        message(FATAL_ERROR "PkgConfig が見つかりません - pkg-config をインストールしてください")
+        # PkgConfig を試す (Linux/macOS)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(TREESITTER REQUIRED tree-sitter)
+        else()
+            message(FATAL_ERROR "tree-sitter が見つかりません")
+        endif()
     endif()
 endif()
 
