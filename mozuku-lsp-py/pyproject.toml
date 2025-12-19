@@ -1,0 +1,43 @@
+[project]
+name = "mozuku-lsp"
+version = "1.0.0"
+description = "Japanese NLP Language Server using GinZA"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "MoZuku Team" }]
+dependencies = [
+    "pygls>=1.3.0",
+    "ginza>=5.2.0",
+    "ja-ginza>=5.2.0",
+    "spacy>=3.7.0",
+    "httpx>=0.27.0",
+    "tree-sitter>=0.21.0",
+    "tree-sitter-languages>=1.10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "ruff>=0.3.0"]
+electra = ["ja-ginza-electra>=5.2.0"]
+
+[project.scripts]
+mozuku-lsp = "mozuku_lsp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mozuku_lsp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

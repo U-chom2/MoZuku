@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as cp from 'child_process';
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -39,6 +40,8 @@ type SemanticHighlightMessage = {
 
 const supportedLanguages = [
   'japanese',
+  'plaintext',
+  'markdown',
   'c',
   'cpp',
   'html',
@@ -48,72 +51,61 @@ const supportedLanguages = [
   'typescript',
   'typescriptreact',
   'rust',
-  'html',
   'latex',
 ];
 
 export async function startClient(
   ctx: vscode.ExtensionContext,
-  serverPath: string
+  _serverPath: string
 ) {
   const isDebug = process.env.VSCODE_DEBUG_MODE === 'true' || ctx.extensionMode === vscode.ExtensionMode.Development;
 
-  const resolved = resolveServerPath(ctx, serverPath);
-  console.log('[MoZuku] 最終的に解決されたサーバーパス:', resolved);
+  const pythonServerInfo = resolvePythonServerPath(ctx);
 
-  if (!fs.existsSync(resolved)) {
-    const msg = `MoZuku LSPサーバーが見つかりません: ${resolved}。先にLSPサーバーをビルドしてください。`;
+  if (!pythonServerInfo.available) {
+    const msg = `MoZuku LSPサーバーが見つかりません。mozuku-lsp-py をインストールしてください。`;
     console.error('[MoZuku]', msg);
     vscode.window.showErrorMessage(msg);
     throw new Error(msg);
   }
 
+  console.log('[MoZuku] Python LSPサーバーを使用:', pythonServerInfo.command, pythonServerInfo.args);
+
   const serverOptions: ServerOptions = {
     run: {
-      command: resolved,
+      command: pythonServerInfo.command,
+      args: pythonServerInfo.args,
       transport: TransportKind.stdio,
       options: { env: isDebug ? { ...process.env, MOZUKU_DEBUG: '1' } : process.env }
     },
     debug: {
-      command: resolved,
+      command: pythonServerInfo.command,
+      args: pythonServerInfo.args,
       transport: TransportKind.stdio,
       options: { env: { ...process.env, MOZUKU_DEBUG: '1' } }
     },
   };
 
   const config = vscode.workspace.getConfiguration('mozuku');
+
   const initOptions = {
-    mozuku: {
-      mecab: {
-        dicdir: config.get<string>('mecab.dicdir', ''),
-        charset: config.get<string>('mecab.charset', 'UTF-8')
-      },
-      analysis: {
-        enableCaboCha: config.get<boolean>('analysis.enableCaboCha', true),
-        grammarCheck: config.get<boolean>('analysis.grammarCheck', true),
-        minJapaneseRatio: config.get<number>('analysis.minJapaneseRatio', 0.1),
-        warningMinSeverity: config.get<number>('analysis.warningMinSeverity', 2),
-        warnings: {
-          particleDuplicate: config.get<boolean>('analysis.warnings.particleDuplicate', true),
-          particleSequence: config.get<boolean>('analysis.warnings.particleSequence', true),
-          particleMismatch: config.get<boolean>('analysis.warnings.particleMismatch', true),
-          sentenceStructure: config.get<boolean>('analysis.warnings.sentenceStructure', false),
-          styleConsistency: config.get<boolean>('analysis.warnings.styleConsistency', false),
-          redundancy: config.get<boolean>('analysis.warnings.redundancy', false)
-        },
-        rules: {
-          commaLimit: config.get<boolean>('analysis.rules.commaLimit', true),
-          adversativeGa: config.get<boolean>('analysis.rules.adversativeGa', true),
-          duplicateParticleSurface: config.get<boolean>('analysis.rules.duplicateParticleSurface', true),
-          adjacentParticles: config.get<boolean>('analysis.rules.adjacentParticles', true),
-          conjunctionRepeat: config.get<boolean>('analysis.rules.conjunctionRepeat', true),
-          raDropping: config.get<boolean>('analysis.rules.raDropping', true),
-          commaLimitMax: config.get<number>('analysis.rules.commaLimitMax', 3),
-          adversativeGaMax: config.get<number>('analysis.rules.adversativeGaMax', 1),
-          duplicateParticleSurfaceMaxRepeat: config.get<number>('analysis.rules.duplicateParticleSurfaceMaxRepeat', 1),
-          adjacentParticlesMaxRepeat: config.get<number>('analysis.rules.adjacentParticlesMaxRepeat', 1),
-          conjunctionRepeatMax: config.get<number>('analysis.rules.conjunctionRepeatMax', 1),
-        }
+    model: config.get<string>('model', 'ja_ginza'),
+    analysis: {
+      grammarCheck: config.get<boolean>('analysis.grammarCheck', true),
+      minJapaneseRatio: config.get<number>('analysis.minJapaneseRatio', 0.1),
+      warningMinSeverity: config.get<number>('analysis.warningMinSeverity', 2),
+      rules: {
+        commaLimit: config.get<boolean>('analysis.rules.commaLimit', true),
+        adversativeGa: config.get<boolean>('analysis.rules.adversativeGa', true),
+        duplicateParticleSurface: config.get<boolean>('analysis.rules.duplicateParticleSurface', true),
+        adjacentParticles: config.get<boolean>('analysis.rules.adjacentParticles', true),
+        conjunctionRepeat: config.get<boolean>('analysis.rules.conjunctionRepeat', true),
+        raDropping: config.get<boolean>('analysis.rules.raDropping', true),
+        commaLimitMax: config.get<number>('analysis.rules.commaLimitMax', 3),
+        adversativeGaMax: config.get<number>('analysis.rules.adversativeGaMax', 1),
+        duplicateParticleSurfaceMaxRepeat: config.get<number>('analysis.rules.duplicateParticleSurfaceMaxRepeat', 1),
+        adjacentParticlesMaxRepeat: config.get<number>('analysis.rules.adjacentParticlesMaxRepeat', 1),
+        conjunctionRepeatMax: config.get<number>('analysis.rules.conjunctionRepeatMax', 1),
       }
     }
   };
@@ -354,91 +346,117 @@ export async function startClient(
   return client;
 }
 
-function resolveServerPath(ctx: vscode.ExtensionContext, configured: string): string {
-  const isWindows = process.platform === 'win32';
-  const exeName = isWindows ? 'mozuku-lsp.exe' : 'mozuku-lsp';
-
-  const isDebug = true;
-
-  if (isDebug) {
-    console.log('[MoZuku] サーバーパスを解決中:', {
-      configured,
-      extensionPath: ctx.extensionUri.fsPath,
-      workspaceFolders: vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath)
-    });
-  }
-
-  const candidates: { type: string; path: string }[] = [];
-  const add = (type: string, p: string | undefined) => {
-    if (!p || p.trim().length === 0) { return; }
-    candidates.push({ type, path: p });
-  };
-
-  // 1) 設定でフルパス指定
-  if (configured && hasPathSep(configured)) {
-    add('設定済み', configured);
-  }
-
-  // 2) 環境変数 MOZUKU_LSP
-  add('環境変数 MOZUKU_LSP', process.env.MOZUKU_LSP);
-
-  // 3) PATH 上のコマンド
-  const pathEnv = process.env.PATH || '';
-  for (const dir of pathEnv.split(path.delimiter)) {
-    if (!dir) { continue; }
-    add('PATH', path.join(dir, exeName));
-  }
-
-  // 4) 既知の標準インストール先
-  const home = process.env.HOME || process.env.USERPROFILE;
-  if (home) {
-    add('ユーザーインストール', path.join(home, '.mozuku', 'bin', exeName));
-  }
-  if (isWindows) {
-    const localAppData = process.env.LOCALAPPDATA;
-    if (localAppData) {
-      add('ユーザーインストール', path.join(localAppData, 'mozuku', 'bin', exeName));
-    }
-  } else {
-    add('システム /usr/local/bin', path.join('/usr/local/bin', exeName));
-  }
-
-  // 5) 拡張同梱バイナリ
-  const primaryPackaged = vscode.Uri.joinPath(ctx.extensionUri, 'bin', exeName).fsPath;
-  add('パッケージ済み', primaryPackaged);
-
-  const plat = process.platform; const arch = process.arch;
-  const legacyPackaged = vscode.Uri.joinPath(ctx.extensionUri, 'server', 'bin', `${plat}-${arch}`, exeName).fsPath;
-  add('パッケージ済み', legacyPackaged);
-
-  // 6) ワークスペース/開発のビルド成果物
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (workspaceRoot) {
-    add('ワークスペース-build', path.join(workspaceRoot, 'build', exeName));
-    add('ワークスペース-lsp', path.join(workspaceRoot, 'mozuku-lsp', 'build', exeName));
-  }
-
-  add('開発-ルート', path.join(ctx.extensionUri.fsPath, '..', 'build', exeName));
-  add('開発-サブ', path.join(ctx.extensionUri.fsPath, '..', 'mozuku-lsp', 'build', exeName));
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate.path)) {
-      if (isDebug) {
-        console.log(`[MoZuku] ${candidate.type}パスを使用:`, candidate.path);
-      }
-      return candidate.path;
-    } else if (isDebug) {
-      console.log(`[MoZuku] ${candidate.type}パスが見つかりません:`, candidate.path);
-    }
-  }
-
-  const fallback = configured || exeName;
-  if (isDebug) {
-    console.log('[MoZuku] フォールバックパスを使用:', fallback);
-  }
-  return fallback;
+interface PythonServerInfo {
+  available: boolean;
+  command: string;
+  args: string[];
 }
 
-function hasPathSep(p: string): boolean {
-  return p.includes('/') || p.includes('\\');
+function resolvePythonServerPath(ctx: vscode.ExtensionContext): PythonServerInfo {
+  const isDebug = process.env.VSCODE_DEBUG_MODE === 'true' || ctx.extensionMode === vscode.ExtensionMode.Development;
+  const isWindows = process.platform === 'win32';
+  const pythonExe = isWindows ? 'python.exe' : 'python';
+  const venvBinDir = isWindows ? 'Scripts' : 'bin';
+
+  // 1. Check for mozuku-lsp-py/.venv (priority: local development setup)
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const devPaths = [
+    workspaceRoot ? path.join(workspaceRoot, 'mozuku-lsp-py') : null,
+    path.join(ctx.extensionUri.fsPath, '..', 'mozuku-lsp-py'),
+  ].filter(Boolean) as string[];
+
+  for (const devPath of devPaths) {
+    const venvPython = path.join(devPath, '.venv', venvBinDir, pythonExe);
+    const serverPy = path.join(devPath, 'mozuku_lsp', 'server.py');
+
+    if (fs.existsSync(venvPython) && fs.existsSync(serverPy)) {
+      if (isDebug) {
+        console.log(`[MoZuku] mozuku-lsp-py/.venv を検出: ${venvPython}`);
+      }
+      return {
+        available: true,
+        command: venvPython,
+        args: ['-m', 'mozuku_lsp.server'],
+      };
+    }
+  }
+
+  // 2. Try mozuku-lsp command directly (if installed globally via uv tool install)
+  // Check common installation paths first (VSCode GUI doesn't inherit shell PATH)
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const uvToolPaths = [
+    path.join(homeDir, '.local', 'bin', 'mozuku-lsp'),
+    path.join(homeDir, '.local', 'bin', 'mozuku-lsp.exe'),
+  ];
+
+  for (const toolPath of uvToolPaths) {
+    if (fs.existsSync(toolPath)) {
+      if (isDebug) {
+        console.log(`[MoZuku] uv tool でインストールされた mozuku-lsp を検出: ${toolPath}`);
+      }
+      return {
+        available: true,
+        command: toolPath,
+        args: []
+      };
+    }
+  }
+
+  // Also try PATH lookup
+  try {
+    const result = cp.spawnSync('mozuku-lsp', ['--version'], {
+      timeout: 5000,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    if (result.status === 0 || result.error === undefined) {
+      if (isDebug) {
+        console.log('[MoZuku] グローバルにインストールされた mozuku-lsp を検出');
+      }
+      return {
+        available: true,
+        command: 'mozuku-lsp',
+        args: []
+      };
+    }
+  } catch {
+    // Not available
+  }
+
+  // 3. Check system Python with mozuku_lsp module installed
+  const pythonCommands = ['python3', 'python'];
+  for (const pythonCmd of pythonCommands) {
+    try {
+      const result = cp.spawnSync(pythonCmd, ['-c', 'import mozuku_lsp'], {
+        timeout: 5000,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      if (result.status === 0) {
+        if (isDebug) {
+          console.log(`[MoZuku] システムPythonに mozuku_lsp がインストールされています: ${pythonCmd}`);
+        }
+        return {
+          available: true,
+          command: pythonCmd,
+          args: ['-m', 'mozuku_lsp.server']
+        };
+      }
+    } catch {
+      // Continue to next option
+    }
+  }
+
+  if (isDebug) {
+    console.log('[MoZuku] Python LSPサーバーが見つかりませんでした');
+    console.log('[MoZuku] 検索したパス:', devPaths);
+  }
+
+  return {
+    available: false,
+    command: '',
+    args: []
+  };
 }

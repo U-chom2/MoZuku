@@ -1,0 +1,8 @@
+LICENSE
+README.md
+pyproject.toml
+mozuku.egg-info/PKG-INFO
+mozuku.egg-info/SOURCES.txt
+mozuku.egg-info/dependency_links.txt
+mozuku.egg-info/requires.txt
+mozuku.egg-info/top_level.txt
