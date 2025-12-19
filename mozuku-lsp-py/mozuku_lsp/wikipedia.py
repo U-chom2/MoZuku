@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import httpx
+import requests
 
 # Cache settings
 CACHE_TTL_SECONDS = 15 * 60  # 15 minutes
@@ -92,72 +92,18 @@ def cache_entry(query: str, content: str, response_code: int) -> None:
 async def fetch_summary_async(query: str) -> CacheEntry:
     """Fetch Wikipedia summary asynchronously.
 
+    Note: Uses synchronous requests in a thread pool because httpx has
+    compatibility issues with Wikipedia API (returns 403).
+
     Args:
         query: Search query
 
     Returns:
         Cache entry with response
     """
-    # Check cache first
-    cached = get_cached_entry(query)
-    if cached is not None:
-        return cached
-
-    url = f"{WIKIPEDIA_API_BASE}{query}"
-
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url,
-                timeout=REQUEST_TIMEOUT,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "MoZuku-LSP/1.0 (Japanese NLP Language Server)",
-                },
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                extract = data.get("extract", "")
-                # Limit length
-                if len(extract) > 500:
-                    extract = extract[:500] + "..."
-                cache_entry(query, extract, 200)
-
-                if _is_debug_enabled():
-                    import sys
-
-                    print(f"[DEBUG] Wikipedia fetch success: {query}", file=sys.stderr)
-
-                return CacheEntry(
-                    content=extract, response_code=200, timestamp=time.time()
-                )
-            else:
-                error_msg = get_japanese_error_message(response.status_code)
-                cache_entry(query, error_msg, response.status_code)
-
-                if _is_debug_enabled():
-                    import sys
-
-                    print(
-                        f"[DEBUG] Wikipedia fetch failed: {query}, status={response.status_code}",
-                        file=sys.stderr,
-                    )
-
-                return CacheEntry(
-                    content=error_msg,
-                    response_code=response.status_code,
-                    timestamp=time.time(),
-                )
-
-    except httpx.TimeoutException:
-        error_msg = "リクエストがタイムアウトしました"
-        cache_entry(query, error_msg, 408)
-        return CacheEntry(content=error_msg, response_code=408, timestamp=time.time())
-    except Exception as e:
-        error_msg = f"エラーが発生しました: {e}"
-        cache_entry(query, error_msg, 500)
-        return CacheEntry(content=error_msg, response_code=500, timestamp=time.time())
+    # Run sync version in thread pool
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_summary_sync, query)
 
 
 def fetch_summary_sync(query: str) -> CacheEntry:
@@ -177,51 +123,50 @@ def fetch_summary_sync(query: str) -> CacheEntry:
     url = f"{WIKIPEDIA_API_BASE}{query}"
 
     try:
-        with httpx.Client() as client:
-            response = client.get(
-                url,
-                timeout=REQUEST_TIMEOUT,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "MoZuku-LSP/1.0 (Japanese NLP Language Server)",
-                },
+        response = requests.get(
+            url,
+            timeout=REQUEST_TIMEOUT,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "MoZuku-LSP/1.0 (Japanese NLP Language Server)",
+            },
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            extract = data.get("extract", "")
+            # Limit length
+            if len(extract) > 500:
+                extract = extract[:500] + "..."
+            cache_entry(query, extract, 200)
+
+            if _is_debug_enabled():
+                import sys
+
+                print(f"[DEBUG] Wikipedia fetch success: {query}", file=sys.stderr)
+
+            return CacheEntry(
+                content=extract, response_code=200, timestamp=time.time()
+            )
+        else:
+            error_msg = get_japanese_error_message(response.status_code)
+            cache_entry(query, error_msg, response.status_code)
+
+            if _is_debug_enabled():
+                import sys
+
+                print(
+                    f"[DEBUG] Wikipedia fetch failed: {query}, status={response.status_code}",
+                    file=sys.stderr,
+                )
+
+            return CacheEntry(
+                content=error_msg,
+                response_code=response.status_code,
+                timestamp=time.time(),
             )
 
-            if response.status_code == 200:
-                data = response.json()
-                extract = data.get("extract", "")
-                # Limit length
-                if len(extract) > 500:
-                    extract = extract[:500] + "..."
-                cache_entry(query, extract, 200)
-
-                if _is_debug_enabled():
-                    import sys
-
-                    print(f"[DEBUG] Wikipedia fetch success: {query}", file=sys.stderr)
-
-                return CacheEntry(
-                    content=extract, response_code=200, timestamp=time.time()
-                )
-            else:
-                error_msg = get_japanese_error_message(response.status_code)
-                cache_entry(query, error_msg, response.status_code)
-
-                if _is_debug_enabled():
-                    import sys
-
-                    print(
-                        f"[DEBUG] Wikipedia fetch failed: {query}, status={response.status_code}",
-                        file=sys.stderr,
-                    )
-
-                return CacheEntry(
-                    content=error_msg,
-                    response_code=response.status_code,
-                    timestamp=time.time(),
-                )
-
-    except httpx.TimeoutException:
+    except requests.exceptions.Timeout:
         error_msg = "リクエストがタイムアウトしました"
         cache_entry(query, error_msg, 408)
         return CacheEntry(content=error_msg, response_code=408, timestamp=time.time())

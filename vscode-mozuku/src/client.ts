@@ -71,18 +71,24 @@ export async function startClient(
 
   console.log('[MoZuku] Python LSPサーバーを使用:', pythonServerInfo.command, pythonServerInfo.args);
 
+  // Create a clean environment for the LSP server
+  // Remove Python-related env vars that could interfere with the isolated uv tool environment
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.PYTHONPATH;
+  delete cleanEnv.PYTHONHOME;
+
   const serverOptions: ServerOptions = {
     run: {
       command: pythonServerInfo.command,
       args: pythonServerInfo.args,
       transport: TransportKind.stdio,
-      options: { env: isDebug ? { ...process.env, MOZUKU_DEBUG: '1' } : process.env }
+      options: { env: isDebug ? { ...cleanEnv, MOZUKU_DEBUG: '1' } : cleanEnv }
     },
     debug: {
       command: pythonServerInfo.command,
       args: pythonServerInfo.args,
       transport: TransportKind.stdio,
-      options: { env: { ...process.env, MOZUKU_DEBUG: '1' } }
+      options: { env: { ...cleanEnv, MOZUKU_DEBUG: '1' } }
     },
   };
 

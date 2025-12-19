@@ -32,7 +32,8 @@ from .wikipedia import (
 
 def _is_debug_enabled() -> bool:
     """Check if debug mode is enabled."""
-    return os.environ.get("MOZUKU_DEBUG") is not None
+    return True  # Always enable debug for now
+    # return os.environ.get("MOZUKU_DEBUG") is not None
 
 
 @dataclass
@@ -185,6 +186,9 @@ def on_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     text = params.text_document.text
     language_id = params.text_document.language_id
 
+    if _is_debug_enabled():
+        print(f"[DEBUG] on_did_open: uri={uri}, language_id={language_id}", file=sys.stderr)
+
     server.documents[uri] = DocumentState(
         text=text,
         language_id=language_id,
@@ -312,17 +316,31 @@ def _analyze_and_publish(uri: str, text: str) -> None:
 
     doc = server.documents.get(uri)
     if doc is None:
+        if _is_debug_enabled():
+            print(f"[DEBUG] _analyze_and_publish: doc is None for {uri}", file=sys.stderr)
         return
+
+    if _is_debug_enabled():
+        print(f"[DEBUG] _analyze_and_publish: language_id={doc.language_id}", file=sys.stderr)
 
     # Prepare analysis text
     analysis_text = _prepare_analysis_text(uri, text)
+
+    if _is_debug_enabled():
+        print(f"[DEBUG] analysis_text length: {len(analysis_text)}, first 100 chars: {repr(analysis_text[:100])}", file=sys.stderr)
 
     # Analyze text
     tokens = server.analyzer.analyze_text(analysis_text)
     sentences = server.analyzer.get_sentences(analysis_text)
 
+    if _is_debug_enabled():
+        print(f"[DEBUG] tokens: {len(tokens)}, sentences: {len(sentences)}", file=sys.stderr)
+
     # Check grammar
     diagnostics = server.grammar_checker.check_grammar(analysis_text, tokens, sentences)
+
+    if _is_debug_enabled():
+        print(f"[DEBUG] diagnostics: {len(diagnostics)}", file=sys.stderr)
 
     # Store tokens
     doc.tokens = tokens
@@ -401,6 +419,10 @@ def _prepare_analysis_text(uri: str, text: str) -> str:
     # Other languages: Extract comments
     if is_language_supported(language_id):
         comment_segments = extract_comments(language_id, text)
+        if _is_debug_enabled():
+            print(f"[DEBUG] extract_comments: found {len(comment_segments)} comments", file=sys.stderr)
+            for seg in comment_segments:
+                print(f"[DEBUG]   segment: {seg.start_byte}:{seg.end_byte} = {repr(seg.sanitized[:50])}", file=sys.stderr)
         doc.comment_segments = comment_segments
         doc.content_ranges = []
         return mask_text_except_comments(language_id, text, comment_segments)
@@ -609,8 +631,26 @@ def _byte_offset_to_position(text: str, byte_offset: int) -> lsp.Position:
 
 def main():
     """Main entry point."""
+    import os
     if _is_debug_enabled():
         print("[DEBUG] Starting MoZuku LSP server", file=sys.stderr)
+        print(f"[DEBUG] Python executable: {sys.executable}", file=sys.stderr)
+        print(f"[DEBUG] Python path: {sys.path[:3]}", file=sys.stderr)
+        print(f"[DEBUG] PYTHONPATH env: {os.environ.get('PYTHONPATH', '(not set)')}", file=sys.stderr)
+        print(f"[DEBUG] PYTHONHOME env: {os.environ.get('PYTHONHOME', '(not set)')}", file=sys.stderr)
+        # Test tree-sitter
+        try:
+            import tree_sitter
+            import tree_sitter_languages
+            print(f"[DEBUG] tree_sitter location: {tree_sitter.__file__}", file=sys.stderr)
+            print(f"[DEBUG] tree_sitter_languages location: {tree_sitter_languages.__file__}", file=sys.stderr)
+            from tree_sitter_languages import get_parser
+            p = get_parser('python')
+            print(f"[DEBUG] tree-sitter test: OK, parser={p}", file=sys.stderr)
+        except Exception as e:
+            import traceback
+            print(f"[DEBUG] tree-sitter test FAILED: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
 
     server.start_io()
 

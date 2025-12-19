@@ -78,32 +78,41 @@ def extract_comments(language_id: str, text: str) -> list[CommentSegment]:
     Returns:
         List of comment segments
     """
+    import sys
+
     if get_parser is None:
+        print("[DEBUG] extract_comments: get_parser is None", file=sys.stderr)
         return []
 
     ts_language = LANGUAGE_MAP.get(language_id)
     if ts_language is None:
         if language_id == "latex":
             return _extract_latex_comments(text)
+        print(f"[DEBUG] extract_comments: language_id {language_id} not in LANGUAGE_MAP", file=sys.stderr)
         return []
 
     try:
         parser = get_parser(ts_language)
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG] extract_comments: get_parser failed: {e}", file=sys.stderr)
         return []
 
-    tree = parser.parse(text.encode("utf-8"))
+    text_bytes = text.encode("utf-8")
+    tree = parser.parse(text_bytes)
     if tree is None:
+        print("[DEBUG] extract_comments: tree is None", file=sys.stderr)
         return []
 
     comment_types = COMMENT_NODE_TYPES.get(ts_language, set())
+    print(f"[DEBUG] extract_comments: ts_language={ts_language}, comment_types={comment_types}", file=sys.stderr)
     segments: list[CommentSegment] = []
 
     def visit_node(node):
         if node.type in comment_types:
             start_byte = node.start_byte
             end_byte = node.end_byte
-            comment_text = text[start_byte:end_byte]
+            # Use byte slice, then decode to get correct text
+            comment_text = text_bytes[start_byte:end_byte].decode("utf-8", errors="replace")
             sanitized = _sanitize_comment(comment_text, language_id)
             segments.append(
                 CommentSegment(
