@@ -147,7 +147,7 @@ export async function startClient(
   const contentHighlights = new Map<string, vscode.Range[]>();
 
   const semanticColors: Record<string, string> = {
-    noun: '#c8c8c8',
+    noun: '#ff7b4f',
     verb: '#569cd6',
     adjective: '#4fc1ff',
     adverb: '#9cdcfe',

@@ -31,7 +31,7 @@
       "editor.semanticHighlighting.enabled": true,
       "editor.semanticTokenColorCustomizations": {
         "rules": {
-          "noun": "#c8c8c8",
+          "noun": "#ff7b4f",
           "noun.numeric": "#b5cea8",
           "unknown.numeric": "#b5cea8",
           "verb": "#569cd6",
