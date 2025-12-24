@@ -312,6 +312,7 @@ class GrammarChecker:
             last_surface = ""
             last_key = ""
             last_start_byte = 0
+            last_line = -1
             streak = 1
             has_last = False
 
@@ -324,6 +325,12 @@ class GrammarChecker:
                     continue
 
                 current_key = self._particle_key(token.feature)
+
+                # Reset streak if on a different line (don't check across line breaks)
+                if has_last and token.line != last_line:
+                    streak = 1
+                    last_start_byte = byte_pos
+                    has_last = False
 
                 if has_last and token.surface == last_surface and current_key == last_key:
                     streak += 1
@@ -352,6 +359,7 @@ class GrammarChecker:
 
                 last_surface = token.surface
                 last_key = current_key
+                last_line = token.line
                 has_last = True
 
     def _check_adjacent_particles(

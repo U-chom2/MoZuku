@@ -334,18 +334,58 @@ def _find_closing_double_dollar(text: str, pos: int) -> int:
 
 
 def _sanitize_comment(text: str, language_id: str) -> str:
-    """Sanitize comment text by removing leading markers."""
-    result = text
+    """Sanitize comment text by replacing leading markers with spaces.
 
-    # Remove line comment markers
+    IMPORTANT: The returned string must have the same length as the input
+    to preserve byte offsets when masking text.
+    """
+    if not text:
+        return text
+
+    result = list(text)
+
     if language_id == "python":
-        result = re.sub(r"^#+\s*", " ", result)
+        # Replace # and following whitespace with spaces (maintaining length)
+        i = 0
+        while i < len(result) and result[i] == "#":
+            result[i] = " "
+            i += 1
+        while i < len(result) and result[i] in " \t":
+            result[i] = " "
+            i += 1
     elif language_id in ("javascript", "typescript", "c", "cpp", "java", "go", "rust"):
-        result = re.sub(r"^//+\s*", " ", result)
-        result = re.sub(r"^/\*+\s*", " ", result)
-        result = re.sub(r"\s*\*+/$", " ", result)
+        # Handle line comments: // ...
+        if len(result) >= 2 and result[0] == "/" and result[1] == "/":
+            i = 0
+            while i < len(result) and result[i] == "/":
+                result[i] = " "
+                i += 1
+            while i < len(result) and result[i] in " \t":
+                result[i] = " "
+                i += 1
+        # Handle block comments: /* ... */
+        elif len(result) >= 2 and result[0] == "/" and result[1] == "*":
+            # Replace leading /*
+            result[0] = " "
+            result[1] = " "
+            i = 2
+            while i < len(result) and result[i] == "*":
+                result[i] = " "
+                i += 1
+            while i < len(result) and result[i] in " \t":
+                result[i] = " "
+                i += 1
+            # Replace trailing */
+            if len(result) >= 2 and result[-1] == "/" and result[-2] == "*":
+                result[-1] = " "
+                result[-2] = " "
+                # Replace any additional * before */
+                j = len(result) - 3
+                while j >= 0 and result[j] == "*":
+                    result[j] = " "
+                    j -= 1
 
-    return result
+    return "".join(result)
 
 
 def _sanitize_latex_comment(text: str) -> str:
