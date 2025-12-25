@@ -209,6 +209,8 @@ class Analyzer:
     def get_sentences(self, text: str) -> list[SentenceBoundary]:
         """Split text into sentences.
 
+        Splits by both spaCy sentence detection and blank lines.
+
         Args:
             text: Input text
 
@@ -223,20 +225,29 @@ class Analyzer:
 
         doc: Doc = self._nlp(text)
         sentences: list[SentenceBoundary] = []
+        sentence_id = 0
 
-        for i, sent in enumerate(doc.sents):
-            # Convert character offsets to byte offsets
-            start_byte = len(text[: sent.start_char].encode("utf-8"))
-            end_byte = len(text[: sent.end_char].encode("utf-8"))
+        for sent in doc.sents:
+            # Split each spaCy sentence by blank lines
+            sent_text = sent.text
+            sent_start_char = sent.start_char
 
-            sentences.append(
-                SentenceBoundary(
-                    start=start_byte,
-                    end=end_byte,
-                    sentence_id=i,
-                    text=sent.text,
+            # Find blank line positions within this sentence
+            subsents = _split_by_blank_lines(sent_text, sent_start_char, text)
+
+            for sub_start_char, sub_end_char, sub_text in subsents:
+                start_byte = len(text[:sub_start_char].encode("utf-8"))
+                end_byte = len(text[:sub_end_char].encode("utf-8"))
+
+                sentences.append(
+                    SentenceBoundary(
+                        start=start_byte,
+                        end=end_byte,
+                        sentence_id=sentence_id,
+                        text=sub_text,
+                    )
                 )
-            )
+                sentence_id += 1
 
         return sentences
 
@@ -435,3 +446,58 @@ def _is_numeric_kanji(text: str) -> bool:
     """Check if text is numeric kanji."""
     numeric_kanji = set("〇一二三四五六七八九十百千万億兆")
     return all(c in numeric_kanji for c in text)
+
+
+def _split_by_blank_lines(
+    sent_text: str,
+    sent_start_char: int,
+    full_text: str
+) -> list[tuple[int, int, str]]:
+    """Split a sentence by blank lines.
+
+    Args:
+        sent_text: Sentence text from spaCy
+        sent_start_char: Starting character offset in full text
+        full_text: Full document text
+
+    Returns:
+        List of (start_char, end_char, text) tuples
+    """
+    import re
+    # Blank line patterns: \n\n, \r\n\r\n, etc.
+    blank_line_pattern = re.compile(r'\n\s*\n')
+
+    subsents = []
+    last_end = 0
+
+    for match in blank_line_pattern.finditer(sent_text):
+        # Add segment before blank line
+        if match.start() > last_end:
+            segment = sent_text[last_end:match.start()]
+            if segment.strip():  # Only add non-empty segments
+                subsents.append((
+                    sent_start_char + last_end,
+                    sent_start_char + match.start(),
+                    segment
+                ))
+        last_end = match.end()
+
+    # Add remaining segment
+    if last_end < len(sent_text):
+        segment = sent_text[last_end:]
+        if segment.strip():
+            subsents.append((
+                sent_start_char + last_end,
+                sent_start_char + len(sent_text),
+                segment
+            ))
+
+    # If no blank lines found, return the whole sentence
+    if not subsents:
+        subsents.append((
+            sent_start_char,
+            sent_start_char + len(sent_text),
+            sent_text
+        ))
+
+    return subsents
