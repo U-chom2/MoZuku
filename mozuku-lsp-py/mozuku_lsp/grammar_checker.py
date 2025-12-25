@@ -38,6 +38,11 @@ class RuleToggles:
     duplicate_particle_surface_max_repeat: int = 1
     adjacent_particles_max_repeat: int = 1
     conjunction_repeat_max: int = 1
+    sentence_length: bool = True
+    sentence_length_max: int = 200
+    notation_consistency: bool = True
+    style_consistency: bool = True
+    style_consistency_threshold: float = 0.8
 
 
 @dataclass
@@ -140,6 +145,23 @@ class GrammarChecker:
         if self.config.rules.ra_dropping:
             self._check_ra_dropping(
                 text, tokens, line_starts, token_byte_positions, diagnostics
+            )
+
+        if self.config.rules.sentence_length:
+            self._check_sentence_length(
+                text, sentences, line_starts, diagnostics,
+                self.config.rules.sentence_length_max
+            )
+
+        if self.config.rules.notation_consistency:
+            self._check_notation_consistency(
+                text, tokens, line_starts, token_byte_positions, diagnostics
+            )
+
+        if self.config.rules.style_consistency:
+            self._check_style_consistency(
+                text, tokens, line_starts, token_byte_positions, diagnostics,
+                self.config.rules.style_consistency_threshold
             )
 
         return diagnostics
@@ -603,6 +625,184 @@ class GrammarChecker:
 
             prev_token = token
             has_prev = True
+
+    def _check_sentence_length(
+        self,
+        text: str,
+        sentences: list[SentenceBoundary],
+        line_starts: list[int],
+        diagnostics: list[Diagnostic],
+        max_length: int,
+    ) -> None:
+        """Check if sentences are too long."""
+        if max_length <= 0:
+            return
+
+        for sentence in sentences:
+            sentence_length = len(sentence.text)
+            if sentence_length > max_length:
+                diag = Diagnostic(
+                    range=self._make_range(text, line_starts, sentence.start, sentence.end),
+                    severity=3,  # Info level
+                    message=f"長い文です ({sentence_length}文字、推奨: {max_length}文字以内)",
+                )
+                diagnostics.append(diag)
+
+                if _is_debug_enabled():
+                    import sys
+
+                    print(
+                        f"[DEBUG] Long sentence detected: {sentence_length} characters",
+                        file=sys.stderr,
+                    )
+
+    def _check_notation_consistency(
+        self,
+        text: str,
+        tokens: list[TokenData],
+        line_starts: list[int],
+        token_byte_positions: list[int],
+        diagnostics: list[Diagnostic],
+    ) -> None:
+        """Check for notation inconsistencies."""
+        # 同じ原形（base_form）の異なる表記を検出
+        base_form_map: dict[str, dict[str, list[int]]] = {}
+
+        for i, token in enumerate(tokens):
+            # 名詞、動詞、形容詞のみを対象
+            if token.token_type not in ("noun", "verb", "adjective"):
+                continue
+
+            if not token.base_form or len(token.base_form) <= 1:
+                continue
+
+            base = token.base_form
+            surface = token.surface
+
+            if base not in base_form_map:
+                base_form_map[base] = {}
+            if surface not in base_form_map[base]:
+                base_form_map[base][surface] = []
+            base_form_map[base][surface].append(i)
+
+        # 表記ゆれをチェック
+        for base_form, surface_dict in base_form_map.items():
+            if len(surface_dict) <= 1:
+                continue
+
+            # 最も頻出する表記を「正」とする
+            most_common_surface = max(surface_dict.items(), key=lambda x: len(x[1]))[0]
+
+            for surface, token_indices in surface_dict.items():
+                if surface == most_common_surface:
+                    continue
+
+                # 異なる表記を警告
+                for i in token_indices:
+                    start_byte = token_byte_positions[i]
+                    end_byte = start_byte + len(tokens[i].surface.encode("utf-8"))
+                    diag = Diagnostic(
+                        range=self._make_range(text, line_starts, start_byte, end_byte),
+                        severity=3,  # Info
+                        message=f"表記ゆれ: '{most_common_surface}' と '{surface}' (原形: {base_form})",
+                    )
+
+                    if _is_debug_enabled():
+                        import sys
+
+                        print(
+                            f"[DEBUG] Notation variation: '{most_common_surface}' vs '{surface}'",
+                            file=sys.stderr,
+                        )
+
+                    diagnostics.append(diag)
+
+    def _is_desu_masu_form(self, feature: str) -> bool:
+        """Check if token is です・ます form."""
+        parts = feature.split(",")
+        if len(parts) < 7:
+            return False
+        base = parts[6]
+        return base in ("です", "ます")
+
+    def _is_dearu_form(self, feature: str) -> bool:
+        """Check if token is である form."""
+        parts = feature.split(",")
+        if len(parts) < 7:
+            return False
+        base = parts[6]
+        return base in ("だ", "である")
+
+    def _check_style_consistency(
+        self,
+        text: str,
+        tokens: list[TokenData],
+        line_starts: list[int],
+        token_byte_positions: list[int],
+        diagnostics: list[Diagnostic],
+        threshold: float,
+    ) -> None:
+        """Check for style consistency (です・ます体 vs である体)."""
+        if threshold <= 0 or threshold >= 1:
+            return
+
+        desu_masu_count = 0
+        dearu_count = 0
+        dearu_tokens: list[tuple[int, TokenData]] = []
+        desu_masu_tokens: list[tuple[int, TokenData]] = []
+
+        for i, token in enumerate(tokens):
+            if self._is_desu_masu_form(token.feature):
+                desu_masu_count += 1
+                desu_masu_tokens.append((i, token))
+            elif self._is_dearu_form(token.feature):
+                dearu_count += 1
+                dearu_tokens.append((i, token))
+
+        total = desu_masu_count + dearu_count
+        if total < 3:  # サンプル数が少なすぎる場合はスキップ
+            return
+
+        # 主要な文体を判定
+        if desu_masu_count / total >= threshold:
+            # です・ます体が主流 → である体を警告
+            for i, token in dearu_tokens:
+                start_byte = token_byte_positions[i]
+                end_byte = start_byte + len(token.surface.encode("utf-8"))
+                diag = Diagnostic(
+                    range=self._make_range(text, line_starts, start_byte, end_byte),
+                    severity=3,
+                    message=f"文体の不統一: です・ます体が主流です（{desu_masu_count}/{total}）",
+                )
+                diagnostics.append(diag)
+
+                if _is_debug_enabled():
+                    import sys
+
+                    print(
+                        f"[DEBUG] Style inconsistency: である in です・ます context",
+                        file=sys.stderr,
+                    )
+
+        elif dearu_count / total >= threshold:
+            # である体が主流 → です・ます体を警告
+            for i, token in desu_masu_tokens:
+                start_byte = token_byte_positions[i]
+                end_byte = start_byte + len(token.surface.encode("utf-8"))
+                diag = Diagnostic(
+                    range=self._make_range(text, line_starts, start_byte, end_byte),
+                    severity=3,
+                    message=f"文体の不統一: である体が主流です（{dearu_count}/{total}）",
+                )
+                diagnostics.append(diag)
+
+                if _is_debug_enabled():
+                    import sys
+
+                    print(
+                        f"[DEBUG] Style inconsistency: です・ます in である context",
+                        file=sys.stderr,
+                    )
 
 
 def _compute_line_starts(text: str) -> list[int]:

@@ -53,6 +53,7 @@ class DocumentState:
     tokens: list[TokenData] = field(default_factory=list)
     comment_segments: list[CommentSegment] = field(default_factory=list)
     content_ranges: list[ByteRange] = field(default_factory=list)
+    diagnostics: list[lsp.Diagnostic] = field(default_factory=list)
 
 
 class MoZukuLanguageServer(LanguageServer):
@@ -143,6 +144,24 @@ def on_initialize(params: lsp.InitializeParams) -> lsp.InitializeResult:
                         rules["conjunctionRepeatMax"]
                     )
 
+                # 文の長さ警告
+                if "sentenceLength" in rules:
+                    server.config.analysis.rules.sentence_length = bool(rules["sentenceLength"])
+                if "sentenceLengthMax" in rules:
+                    server.config.analysis.rules.sentence_length_max = int(rules["sentenceLengthMax"])
+
+                # 表記ゆれ検出
+                if "notationConsistency" in rules:
+                    server.config.analysis.rules.notation_consistency = bool(rules["notationConsistency"])
+
+                # 文体の一貫性
+                if "styleConsistency" in rules:
+                    server.config.analysis.rules.style_consistency = bool(rules["styleConsistency"])
+                if "styleConsistencyThreshold" in rules:
+                    server.config.analysis.rules.style_consistency_threshold = float(
+                        rules["styleConsistencyThreshold"]
+                    )
+
     # Update grammar checker with new config
     server.grammar_checker = GrammarChecker(server.config.analysis)
 
@@ -168,6 +187,9 @@ def on_initialize(params: lsp.InitializeParams) -> lsp.InitializeResult:
                 full=True,
             ),
             hover_provider=True,
+            code_action_provider=lsp.CodeActionOptions(
+                code_action_kinds=[lsp.CodeActionKind.QuickFix]
+            ),
         ),
     )
 
@@ -306,6 +328,99 @@ def on_hover(params: lsp.HoverParams) -> lsp.Hover | None:
     return None
 
 
+@server.feature(lsp.TEXT_DOCUMENT_CODE_ACTION)
+def on_code_action(params: lsp.CodeActionParams) -> list[lsp.CodeAction]:
+    """Handle code action request."""
+    uri = params.text_document.uri
+    if uri not in server.documents:
+        return []
+
+    doc = server.documents[uri]
+    actions: list[lsp.CodeAction] = []
+
+    # リクエスト範囲内のdiagnosticsを取得
+    for diag in doc.diagnostics:
+        if _ranges_overlap(diag.range, params.range):
+            action = _create_action_for_diagnostic(diag, doc.text, uri)
+            if action:
+                actions.append(action)
+
+    return actions
+
+
+def _ranges_overlap(range1: lsp.Range, range2: lsp.Range) -> bool:
+    """Check if two ranges overlap."""
+    # range1 が range2 に含まれる or 交差する
+    return not (
+        range1.end.line < range2.start.line
+        or (range1.end.line == range2.start.line and range1.end.character < range2.start.character)
+        or range1.start.line > range2.end.line
+        or (range1.start.line == range2.end.line and range1.start.character > range2.end.character)
+    )
+
+
+def _create_action_for_diagnostic(
+    diag: lsp.Diagnostic, text: str, uri: str
+) -> lsp.CodeAction | None:
+    """Create a code action for a diagnostic."""
+    import re
+
+    # 読点の削除アクション（複雑なので今回はスキップ）
+    if "読点" in diag.message and "最大" in diag.message:
+        return None
+
+    # 表記ゆれの修正アクション
+    if "表記ゆれ" in diag.message:
+        # メッセージから推奨表記を抽出: "表記ゆれ: 'サーバー' と 'サーバ'"
+        match = re.search(r"'([^']+)' と '([^']+)'", diag.message)
+        if match:
+            correct_form = match.group(1)
+            return lsp.CodeAction(
+                title=f"'{correct_form}' に統一する",
+                kind=lsp.CodeActionKind.QuickFix,
+                diagnostics=[diag],
+                edit=lsp.WorkspaceEdit(
+                    changes={
+                        uri: [
+                            lsp.TextEdit(
+                                range=diag.range,
+                                new_text=correct_form
+                            )
+                        ]
+                    }
+                ),
+            )
+
+    # ら抜き言葉の修正（簡易版）
+    if "ら抜き" in diag.message:
+        # 問題の範囲のテキストを取得
+        lines = text.split("\n")
+        if diag.range.start.line < len(lines):
+            line_text = lines[diag.range.start.line]
+            problem_text = line_text[diag.range.start.character:diag.range.end.character]
+
+            # 簡易修正: 「れる」→「られる」
+            if "れる" in problem_text:
+                fixed_text = problem_text.replace("れる", "られる")
+                return lsp.CodeAction(
+                    title=f"'{fixed_text}' に修正する",
+                    kind=lsp.CodeActionKind.QuickFix,
+                    diagnostics=[diag],
+                    edit=lsp.WorkspaceEdit(
+                        changes={
+                            uri: [
+                                lsp.TextEdit(
+                                    range=diag.range,
+                                    new_text=fixed_text
+                                )
+                            ]
+                        }
+                    ),
+                )
+
+    return None
+
+
 def _analyze_and_publish(uri: str, text: str) -> None:
     """Analyze document and publish diagnostics."""
     if not server.analyzer.is_initialized:
@@ -362,6 +477,9 @@ def _analyze_and_publish(uri: str, text: str) -> None:
         )
         for diag in diagnostics
     ]
+
+    # Store diagnostics for code actions
+    doc.diagnostics = lsp_diagnostics
 
     server.text_document_publish_diagnostics(
         lsp.PublishDiagnosticsParams(uri=uri, diagnostics=lsp_diagnostics)
